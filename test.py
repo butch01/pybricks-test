@@ -6,20 +6,6 @@ from pybricks.tools import wait, StopWatch
 from pybricks.parameters import Color, Axis
 
 
-hub = InventorHub(top_side=Axis.Z, front_side=Axis.Y)
-
-motorLeft = Motor(Port.A, reset_angle=None, )
-motorRight = Motor(Port.B, Direction.COUNTERCLOCKWISE, reset_angle=None)
-# driveBase = DriveBase(Motor(Port.A, reset_angle=None, ), Motor(Port.B, Direction.COUNTERCLOCKWISE, reset_angle=None), 56.02, 128 )
-
-#driveBase = DriveBase(motorRight, motorLeft,56.02, 128 )
-# driveBase = DriveBase(motorRight, motorLeft,56.009, 131.5 )
-
-
-speed_straight = int(400)
-acc_straight  = int(200)
-speed_turn    = int(150)
-acc_turn      = int(100)
 
 
 class log:
@@ -284,8 +270,6 @@ class myDriveBase(DriveBase):
                 wait(10) # wait until motors are really stopped
             
 
-# driveBase = DriveBase(motorRight, motorLeft,56.009, 130.0 )
-driveBase = myDriveBase(motorRight, motorLeft, 56.009, 130.0, 300, 100, 100, 50 )
 
 
 
@@ -386,51 +370,65 @@ class Constants:
 
 
 
-def turn(angle: int, speed: int = speed_turn, acc: int = acc_turn, stop: Stop = Stop.HOLD, wait: bool = True, gyro: bool = False):
-    """
-    Führt eine Drehung der Roboterbasis um den angegebenen Winkel aus.
+# def turn(angle: int, speed: int = speed_turn, acc: int = acc_turn, stop: Stop = Stop.HOLD, wait: bool = True, gyro: bool = False):
+#     """
+#     Führt eine Drehung der Roboterbasis um den angegebenen Winkel aus.
 
-    Parameter:
-    angle (int): Drehwinkel in Grad (positiv für Rechtsdrehung, negativ für Linksdrehung).
-    speed (int): Maximale Drehgeschwindigkeit.
-    acc (int): Beschleunigung für die Drehbewegung.
-    stop (Stop): Stopp-Modus nach der Drehung (z. B. Bremsen oder Ausrollen).
-    wait (bool): Ob die Funktion warten soll, bis die Drehung abgeschlossen ist.
-    gyro (bool): Ob das Gyroskop zur Stabilisierung der Drehung verwendet wird (falls vorhanden).
+#     Parameter:
+#     angle (int): Drehwinkel in Grad (positiv für Rechtsdrehung, negativ für Linksdrehung).
+#     speed (int): Maximale Drehgeschwindigkeit.
+#     acc (int): Beschleunigung für die Drehbewegung.
+#     stop (Stop): Stopp-Modus nach der Drehung (z. B. Bremsen oder Ausrollen).
+#     wait (bool): Ob die Funktion warten soll, bis die Drehung abgeschlossen ist.
+#     gyro (bool): Ob das Gyroskop zur Stabilisierung der Drehung verwendet wird (falls vorhanden).
 
-    Rückgabe:
-    None
-    """
-    # default (7558, 0, 1889, 3, 6)
-    # driveBase.heading_control.pid (7558, 1000, 1889, 1, 6)
-    driveBase.heading_control.pid(7558, 0, 1889, 1, 6)
-    driveBase.settings(speed_straight, acc_straight, speed_turn, acc_turn)
-    driveBase.turn(angle, stop, wait)
+#     Rückgabe:
+#     None
+#     """
+#     # default (7558, 0, 1889, 3, 6)
+#     # driveBase.heading_control.pid (7558, 1000, 1889, 1, 6)
+#     driveBase.heading_control.pid(7558, 0, 1889, 1, 6)
+#     driveBase.settings(speed_straight, acc_straight, speed_turn, acc_turn)
+#     driveBase.turn(angle, stop, wait)
 
-def driveStraight(distance: int, speed: int = speed_straight, acc: int = acc_straight, stop: Stop = Stop.HOLD, wait: bool = True, gyro: bool = False):
-    """
-    Fährt die Roboterbasis eine gerade Strecke mit den angegebenen Parametern.
+# def driveStraight(distance: int, speed: int = speed_straight, acc: int = acc_straight, stop: Stop = Stop.HOLD, wait: bool = True, gyro: bool = False):
+#     """
+#     Fährt die Roboterbasis eine gerade Strecke mit den angegebenen Parametern.
 
-    Parameter:
-    distance (int): Die Strecke, die der Roboter zurücklegen soll (in Millimetern).
-    speed (int): Maximale Fahrgeschwindigkeit.
-    acc (int): Beschleunigung für die Fahrt.
-    stop (Stop): Stopp-Modus nach der Fahrt (z. B. Bremsen oder Ausrollen).
-    wait (bool): Ob die Funktion warten soll, bis die Bewegung abgeschlossen ist.
-    gyro (bool): Ob das Gyroskop zur Stabilisierung der Bewegung verwendet wird (standardmäßig aktiviert).
+#     Parameter:
+#     distance (int): Die Strecke, die der Roboter zurücklegen soll (in Millimetern).
+#     speed (int): Maximale Fahrgeschwindigkeit.
+#     acc (int): Beschleunigung für die Fahrt.
+#     stop (Stop): Stopp-Modus nach der Fahrt (z. B. Bremsen oder Ausrollen).
+#     wait (bool): Ob die Funktion warten soll, bis die Bewegung abgeschlossen ist.
+#     gyro (bool): Ob das Gyroskop zur Stabilisierung der Bewegung verwendet wird (standardmäßig aktiviert).
 
-    Rückgabe:
-    None
-    """
-    # default (7558, 0, 1889, 3, 6)
-    # driveBase.heading_control.pid(7558, 0, 1889, 0, 20)
-    driveBase.heading_control.pid(7558, 0, 1889, 1, 100)
-    driveBase.settings(speed_straight, acc_straight, speed_turn, acc_turn)
-    driveBase.straight(distance, stop, wait)
+#     Rückgabe:
+#     None
+#     """
+#     # default (7558, 0, 1889, 3, 6)
+#     # driveBase.heading_control.pid(7558, 0, 1889, 0, 20)
+#     driveBase.heading_control.pid(7558, 0, 1889, 1, 100)
+#     driveBase.settings(speed_straight, acc_straight, speed_turn, acc_turn)
+#     driveBase.straight(distance, stop, wait)
 
+hub = InventorHub(top_side=Axis.Z, front_side=Axis.Y)
 
 motorArm = MotorAsServo(Port.F, Direction.COUNTERCLOCKWISE, -40, 215,name="MA")
 motorColor = MotorAsServo(Port.C, Direction.CLOCKWISE, -150, 100,name="MC")
+
+
+motorLeft = Motor(Port.A, reset_angle=None, )
+motorRight = Motor(Port.B, Direction.COUNTERCLOCKWISE, reset_angle=None)
+
+speed_straight = int(400)
+acc_straight  = int(200)
+speed_turn    = int(150)
+acc_turn      = int(100)
+
+# driveBase = DriveBase(motorRight, motorLeft,56.009, 130.0 )
+driveBase = myDriveBase(motorRight, motorLeft, 56.009, 130.0, 300, 100, 100, 50 )
+
 
 
 # set debug
