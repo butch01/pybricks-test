@@ -22,6 +22,41 @@ speed_turn    = int(150)
 acc_turn      = int(100)
 
 
+class log:
+    """
+    Logging class
+    """
+    
+    loglevel = int(0)
+    LOGLEVEL_DEBUG = int(0)
+    LOGLEVEL_INFO = int(1)
+    LOGLEVEL_ERROR = int(2)
+
+    def debug(self, message: str):
+        """
+        logt auf DEBUG Level
+        :param message: Lognachricht
+        """
+        if self.loglevel <= log.LOGLEVEL_DEBUG:
+            print(f"{stopWatch.time():07d} D: {message}")
+
+    def info (self, message: str):
+        """
+        logt auf INFO Level
+        :param message: Lognachricht
+        """
+        if self.loglevel <= log.LOGLEVEL_INFO:
+            print(f"{stopWatch.time():07d} I: {message}")
+
+    def error(self, message: str):
+        """
+        logt auf ERROR Level
+        :param message: Lognachricht
+        """
+        if self.loglevel <= log.LOGLEVEL_ERROR:
+            print(f"{stopWatch.time():07d} E: {message}")
+
+
 class PIDController:
     def __init__(self, Kp: float, Ki: float, Kd: float, deadzone: float):
         """ Initialisiert die PID-Parameter und speichert vorherige Werte für die Berechnung. """
@@ -45,9 +80,6 @@ class PIDController:
             output = 0 # in deadzone, kein Fehler
         return output  # Gibt den berechneten Korrekturwert zurück
 
-
-
-
     def reset(self):
         """ Setzt die gespeicherten Werte des PID-Reglers zurück. """
         self.last_error = 0  # Fehler zurücksetzen
@@ -55,26 +87,41 @@ class PIDController:
 
 
 class myDriveBase(DriveBase):
-    
-    # speedLastValue = 0  # memory of last speed value
-    # speedLastTime = 0   # memory of last time when speed was measured
+    """
+    Extension of class DriveBase.
+    adds special functions like driveStraightToTarget(), calculateHeadingCorrection(), checkDistance(), ...
+    """
     
     def __init__(self, motorLeft: Motor, motorRight: Motor, wheelDiameter: float, axleTrack: float, speedStraightDefault: float, accStraightDefault: float, speedTurnDefault: float, accTurnDefault: float):
-        super().__init__(motorLeft, motorRight, wheelDiameter, axleTrack)
+        """
+        Constructor
+        """
+
+        super().__init__(motorLeft, motorRight, wheelDiameter, axleTrack)  # calls superclass constructor
+        # set default values for class variables
         self.myMotorLeft = motorLeft
         self.wheelDiameter = wheelDiameter
         self.myMotorRight = motorRight
         self.speedStraightDefault = speedStraightDefault
         self.accStraightDefault = accStraightDefault
+        # # currently not using pid controller
         # self.pidHeading = PIDController(1.0, 0.1, 0.01, 1)  # Beispielwerte für die PID-Parameter
-        self.pidHeading = PIDController(0.5, 0.1, 2, 0)  # Beispielwerte für die PID-Parameter
+        # self.pidHeading = PIDController(0.5, 0.1, 2, 0)  # Beispielwerte für die PID-Parameter
+        
+        # config values for correction
         self.correctionLimitMin = 5
         self.correctionLimitMax = 200
         self.correctionDeadzone = 0.5
         self.correctionFactor = 5
+
+        # setting default for breaking into slow speed area
+        self.slowSpeedDeacceleration = int(3000) # set breaking deacceleration to come to the slow speed area
+
+        # defining event variables
         self.stopEventReached = False
-        self.isDistanceBreaking = False
-        
+        self.isEventSlowSpeedBreakingReached = False # informs, if the pint for start breaking for slow speed area is reached
+        self.isEventDistanceReached = False # informs if the distance is reached
+        self.isEventStoppingReached = False # informs if the robot is going to stop
     
     def calculateHeadingCorrection(self, targetHeading: float) -> tuple[float, float]:
         """
@@ -85,6 +132,7 @@ class myDriveBase(DriveBase):
                 - correction: Die berechnete Geschwindigkeitskorrektur für die Motoren.
                 - headingDelta: Der Unterschied zwischen aktuellem und Ziel-Heading.
         """
+
         # calculate error / delta in heading
         headingDelta = (targetHeading - hub.imu.heading())
         correction = 0
@@ -118,36 +166,28 @@ class myDriveBase(DriveBase):
         :param degrees: Anzahl der Grad.
         :return: Entsprechende Strecke in cm.
         """
+
         wheel_diameter = self.wheelDiameter  # Muss als Klassenvariable existieren!
         circumference = 3.1415 * wheel_diameter  # Umfang des Rads
         return (degrees * circumference) / 360
 
-    def processEventStopOnDistance(self, distance: float, acc: int, targetSpeed) -> bool:
+    def checkDistance(self, distance: float, acc: int) -> bool:
         """
         Überprüft, ob das Fahrzeug die angegebene Distanz erreicht oder unterschritten hat.
         Achtung: Die berechnung stimmt nur, wenn man bereits die Zielgeschwindigkeit erreicht hat.
 
         :param distance: Die Zielentfernung (in Einheiten, z. B. cm), bei der das Event ausgelöst werden soll.#
         :param acc: Bremsbeschleunigung, die bei den Motoren gesetzt ist.
-        :param tartgeSpeed: Zielgeschwindigkeit.
         :return: `True`, wenn die aktuelle Distanz kleiner oder gleich `distance` ist, andernfalls `False`.
         """
 
         # # calculate break distance (when using current acc)
         currentSpeed = (self.myMotorLeft.speed() + self.myMotorRight.speed()) /2
-        # breakingDistance=(targetSpeed ** 2) / (2 * abs(acc))
 
-        
-
-        # output = False
-        # if self.distance() + breakingDistance >= distance:
-        #     output = True
-        #     self.stopEventReached = True
-        #     log.debug(f"processEventStopOnDistance: targDist = {distance}, driven= {self.distance()} breaking= {breakingDistance} speed= {currentSpeed}")
 
         # Aktuelle Geschwindigkeit in cm/s umrechnen
-        currentSpeed_cm = self.degrees_to_cm((self.myMotorLeft.speed() + self.myMotorRight.speed()) / 2)
-        targetSpeed_cm = self.degrees_to_cm(targetSpeed)
+        currentSpeed_cm = self.degrees_to_cm(currentSpeed)
+
         # Bremsbeschleunigung ebenfalls umrechnen
         acc_cm = self.degrees_to_cm(abs(acc))
 
@@ -158,11 +198,10 @@ class myDriveBase(DriveBase):
         output = False
         if self.distance() + breakingDistance >= distance:
             output = True
-            self.stopEventReached = True
-            log.debug(f"processEventStopOnDistance: targDist = {distance}, driven= {self.distance()} breaking= {breakingDistance} speed= {currentSpeed}")
+            log.debug(f"checkDistance: targDist = {distance}, driven= {self.distance()} breaking= {breakingDistance} speed= {currentSpeed} reached={output}")
         return output
 
-    def driveStraightToTarget(self, distance: float, targetHeading: float, speed: int = None, acc: int = None, stop: Stop = Stop.HOLD):
+    def driveStraightToTarget(self, distance: float, targetHeading: float, speed: int = None, acc: int = None, stop: Stop = Stop.HOLD, slowDistance: float = None, slowSpeed: int = None, slowDistanceBreakAcc: int = None ):
         """
         Bewegt das Fahrzeug eine bestimmte Distanz geradeaus, während es eine Zielausrichtung (Heading) beibehält.
 
@@ -170,17 +209,19 @@ class myDriveBase(DriveBase):
         :param targetHeading: Der gewünschte Ziel-Heading-Winkel (in Grad), den das Fahrzeug beibehalten soll.
         :param speed: Die gewünschte Geschwindigkeit der Motoren (optional). Falls None, wird der Standardwert `self.speedStraightDefault` verwendet.
         :param acc: Die gewünschte Beschleunigung der Motoren (optional). Falls None, wird der Standardwert `self.accStraightDefault` verwendet.
-        :param stop: Die Stopp-Methode nach Erreichen des Ziels (z. B. `Stop.HOLD` oder `Stop.COAST`).
+        :param stop: Die Stopp-Methode nach Erreichen des Ziels (z. B. `Stop.HOLD` oder `Stop.COAST`). Setze auf None, damit der Motor weiterdreht, aber die Funktion beendet wird.
+        :param slowDistance: Ab dieser Entfernung soll eine niedrigere Geschwindigkeit verwendet werden (optional)
+        :param slowSpeed: Geschwindigkeit für den langsamfahrenden Teil
+        :param slowDistanceBreakAcc:
         """
         log.debug(f"driveStraightToTarget({distance}, {targetHeading}, {speed}, {acc}, {stop})" )
-        # set default for speed and acc if not configured. Take Values from instance variables
+        # set default for speed, acc,slowDistanceBreakAcc if not configured. Take Values from instance variables
         if speed is None:
             speed = self.speedStraightDefault
         if acc is None:
             acc = self.accStraightDefault
-
-        # combinedSpeed = (self.myMotorLeft.speed() + self.myMotorRight.speed()) / 2
-        # log.debug(f"({self.myMotorLeft.speed():03d} + {self.myMotorRight.speed():03d}) / 2) = {combinedSpeed:03d}")
+        if slowDistanceBreakAcc is None:
+            slowDistanceBreakAcc = self.slowSpeedDeacceleration
         
         # configure acceleration for both motors
         self.myMotorLeft.control.limits(acceleration=acc)
@@ -190,20 +231,45 @@ class myDriveBase(DriveBase):
         self.myMotorLeft.run(speed)
         self.myMotorRight.run(speed)
 
+        isSlowSpeedBreaking = False
         self.stopEventReached = False
-        while not self.stopEventReached:
+        
+        # run as long as neither self.stopEventReached is True nor self.isEventDistanceReached is True
+        while not self.stopEventReached and not self.isEventDistanceReached:
             # correct the direction if needed
             correction, headingDelta = self.calculateHeadingCorrection(targetHeading)
-            self.myMotorLeft.run(speed + correction)
-            self.myMotorRight.run(speed - correction)
+            
+            if not self.isEventSlowSpeedBreakingReached and not self.isEventStoppingReached:
+                # we are in normal speed area, so we can correct use speed as basis
+                self.myMotorLeft.run(speed + correction)
+                self.myMotorRight.run(speed - correction)
+            elif self.isEventSlowSpeedBreakingReached:
+                # we are in slow speed area, so we can correct use slowSpeed as basis
+                self.myMotorLeft.run(slowSpeed + correction)
+                self.myMotorRight.run(slowSpeed - correction)
+            # in other cases, do not correct heading anymore
 
-            # only check distance we have a limit
+            # process breaking into slow speed area (only check if slowDistance is set)
+            if slowDistance is not None and slowSpeed is not None and isSlowSpeedBreaking == False:
+                if self.checkDistance(slowDistance, slowDistanceBreakAcc):
+                    self.myMotorLeft.control.limits(acceleration=slowDistanceBreakAcc)
+                    self.myMotorRight.control.limits(acceleration=slowDistanceBreakAcc)
+                    self.myMotorLeft.run(slowSpeed)
+                    self.myMotorRight.run(slowSpeed)
+                    isSlowSpeedBreaking = True
+                    self.EventSlowSpeedBreakingReached = True
+                    log.debug(f"driveStraightToTarget: slow speed breaking at {self.distance()} with speed {slowSpeed} breakAcc {slowDistanceBreakAcc}")
+                    
+            # only check distance we have a distance limit
             if distance != 0:
-                if self.processEventStopOnDistance(distance, acc, speed):
-                    self.myMotorLeft.run(0)
-                    self.myMotorRight.run(0)
-                    self.isDistanceBreaking = True
-             
+                if self.checkDistance(distance, acc, speed):
+                    # if stop is None, just end this function and keep current speed
+                    if stop is not None:
+                        # hard stop, stop as fast as possible
+                        self.myMotorLeft.stop()
+                        self.myMotorRight.stop()
+                        self.stopEventReached = True    # remember that we have a stop event here
+                    self.eventDistanceReached = True
 
             log.debug(
                 f"driveStraightToTarget: headingDelta: {headingDelta} " +
@@ -211,46 +277,16 @@ class myDriveBase(DriveBase):
                 f"speedR {self.myMotorRight.speed()} dist {self.distance()} " +
                 f"done {self.done()}" )
         
-        while not self.isStopped():
-            if self.distance() + acc / 100 * 1.2 >= distance:
-                self.myMotorLeft.stop()
-                self.myMotorRight.stop()
-
+        # wait for full stop, as long stop is not set to None
+        # if stop is set to None, just end the function
+        if stop is not None:
+            while not self.isStopped():
+                wait(10) # wait until motors are really stopped
+            
 
 # driveBase = DriveBase(motorRight, motorLeft,56.009, 130.0 )
 driveBase = myDriveBase(motorRight, motorLeft, 56.009, 130.0, 300, 100, 100, 50 )
 
-class log:
-    
-    loglevel = int(0)
-    LOGLEVEL_DEBUG = int(0)
-    LOGLEVEL_INFO = int(1)
-    LOGLEVEL_ERROR = int(2)
-
-    def debug(message: str):
-        """
-            logt auf DEBUG Level
-            :param message: Lognachricht
-        """
-        if log.loglevel <= log.LOGLEVEL_DEBUG:
-            print(f"{stopWatch.time():07d} D: {message}")
-
-    def info (message: str):
-        """
-        logt auf INFO Level
-        :param message: Lognachricht
-        """
-        if log.loglevel <= log.LOGLEVEL_INFO:
-            print(f"{stopWatch.time():07d} I: {message}")
-
-
-    def error(message: str):
-        """
-        logt auf ERROR Level
-        :param message: Lognachricht
-        """
-        if log.loglevel <= log.LOGLEVEL_ERROR:
-            print(f"{stopWatch.time():07d} E: {message}")
 
 
 class MotorAsServo:
@@ -436,12 +472,11 @@ def main():
     turnVar=-90
     hub.imu.reset_heading(0)
     headingTarget = 0
-    sensorColor.lights.on([100,100,100])
-    log.debug("ÖABLASSD")
     wait (500)
     # motorLeft.run(-500)
     # motorRight.run(-500)
     driveBase.driveStraightToTarget(500,0,900,3000)
+    
     wait(2000)
     log.debug(f"{driveBase.done()} {driveBase.distance()}")
     # 
