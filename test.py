@@ -6,42 +6,30 @@ from pybricks.tools import wait, StopWatch
 from pybricks.parameters import Color, Axis
 
 
-
-
 class log:
     """
-    Logging class
+    Static logging class.
     """
-    
-    loglevel = int(0)
-    LOGLEVEL_DEBUG = int(0)
-    LOGLEVEL_INFO = int(1)
-    LOGLEVEL_ERROR = int(2)
 
-    def debug(self, message: str):
-        """
-        logt auf DEBUG Level
-        :param message: Lognachricht
-        """
-        if self.loglevel <= log.LOGLEVEL_DEBUG:
+    loglevel = 0
+    LOGLEVEL_DEBUG = 0
+    LOGLEVEL_INFO = 1
+    LOGLEVEL_ERROR = 2
+
+    @staticmethod
+    def debug(message: str):
+        if log.loglevel <= log.LOGLEVEL_DEBUG:
             print(f"{stopWatch.time():07d} D: {message}")
 
-    def info (self, message: str):
-        """
-        logt auf INFO Level
-        :param message: Lognachricht
-        """
-        if self.loglevel <= log.LOGLEVEL_INFO:
+    @staticmethod
+    def info(message: str):
+        if log.loglevel <= log.LOGLEVEL_INFO:
             print(f"{stopWatch.time():07d} I: {message}")
 
-    def error(self, message: str):
-        """
-        logt auf ERROR Level
-        :param message: Lognachricht
-        """
-        if self.loglevel <= log.LOGLEVEL_ERROR:
+    @staticmethod
+    def error(message: str):
+        if log.loglevel <= log.LOGLEVEL_ERROR:
             print(f"{stopWatch.time():07d} E: {message}")
-
 
 class PIDController:
     def __init__(self, Kp: float, Ki: float, Kd: float, deadzone: float):
@@ -70,7 +58,6 @@ class PIDController:
         """ Setzt die gespeicherten Werte des PID-Reglers zurück. """
         self.last_error = 0  # Fehler zurücksetzen
         self.integral = 0  # Integralwert zurücksetzen
-
 
 class myDriveBase(DriveBase):
     """
@@ -105,10 +92,28 @@ class myDriveBase(DriveBase):
 
         # defining event variables
         self.stopEventReached = False
+        self.eventBreakingPointReached = False  # informs if the breaking point is reached
         self.isEventSlowSpeedBreakingReached = False # informs, if the pint for start breaking for slow speed area is reached
         self.isEventDistanceReached = False # informs if the distance is reached
         self.isEventStoppingReached = False # informs if the robot is going to stop
-    
+        
+        # store last 5 measured speeds for averaging
+        self.lastSpeedList = []
+        self.speedListMaxLength = 5  # maximum length of the speed list
+        self.currentAvgSpeed = 0 # current average speed, calculated from the last speedListMaxLength speeds
+
+    def rememberSpeed(self, speed: int):
+        """Fügt eine neue Geschwindigkeit zur Liste hinzu und hält die Länge bei maximal speedListMaxLength."""
+        self.lastSpeedList.append(speed)
+        if len(self.lastSpeedList) > self.speedListMaxLength:
+            self.lastSpeedList.pop(0)
+
+    def calculateAverageRememberedSpeed(self):
+        """Berechnet den Mittelwert der letzten 5 Geschwindigkeiten und speichert ihn als self.currentAvgSpeed."""
+        if not self.lastSpeedList:
+            return 0
+        self.currentAvgSpeed = sum(self.lastSpeedList) / len(self.lastSpeedList)
+
     def calculateHeadingCorrection(self, targetHeading: float) -> tuple[float, float]:
         """
         Berechnet die Geschwindigkeitskorrektur basierend auf dem Heading-Delta.
@@ -135,7 +140,6 @@ class myDriveBase(DriveBase):
                     correction = self.correctionLimitMin
         return correction, headingDelta  # Rückgabe als Tupel
 
-
     def isStopped(self):
         """
         checks if both wheels are stopped
@@ -157,22 +161,21 @@ class myDriveBase(DriveBase):
         circumference = 3.1415 * wheel_diameter  # Umfang des Rads
         return (degrees * circumference) / 360
 
-    def checkDistance(self, distance: float, acc: int) -> bool:
+    def checkBreakingPoint(self, distance: float, acc: int) -> bool:
         """
-        Überprüft, ob das Fahrzeug die angegebene Distanz erreicht oder unterschritten hat.
-        Achtung: Die berechnung stimmt nur, wenn man bereits die Zielgeschwindigkeit erreicht hat.
+        Überprüft, ob das Fahrzeug die angegebene Distanz erreicht oder unterschritten hat. Dabei wird der Bremsweg mit der gegebenen Bremsbeschleunigung acc berücksichtigt.
+        
+        Voraussetzung:  self.currentAvgSpeed wurde bereits berechnet.
 
         :param distance: Die Zielentfernung (in Einheiten, z. B. cm), bei der das Event ausgelöst werden soll.#
         :param acc: Bremsbeschleunigung, die bei den Motoren gesetzt ist.
         :return: `True`, wenn die aktuelle Distanz kleiner oder gleich `distance` ist, andernfalls `False`.
         """
 
-        # # calculate break distance (when using current acc)
-        currentSpeed = (self.myMotorLeft.speed() + self.myMotorRight.speed()) /2
-
+        # calculate break distance (when using current acc)
 
         # Aktuelle Geschwindigkeit in cm/s umrechnen
-        currentSpeed_cm = self.degrees_to_cm(currentSpeed)
+        currentSpeed_cm = self.degrees_to_cm(self.currentAvgSpeed)
 
         # Bremsbeschleunigung ebenfalls umrechnen
         acc_cm = self.degrees_to_cm(abs(acc))
@@ -184,7 +187,7 @@ class myDriveBase(DriveBase):
         output = False
         if self.distance() + breakingDistance >= distance:
             output = True
-            log.debug(f"checkDistance: targDist = {distance}, driven= {self.distance()} breaking= {breakingDistance} speed= {currentSpeed} reached={output}")
+            log.debug(f"checkDistance: targDist = {distance}, driven= {self.distance()} breaking= {breakingDistance} speed= {self.currentAvgSpeed} reached={output}")
         return output
 
     def driveStraightToTarget(self, distance: float, targetHeading: float, speed: int = None, acc: int = None, stop: Stop = Stop.HOLD, slowDistance: float = None, slowSpeed: int = None, slowDistanceBreakAcc: int = None ):
@@ -224,8 +227,13 @@ class myDriveBase(DriveBase):
         while not self.stopEventReached and not self.isEventDistanceReached:
             # correct the direction if needed
             correction, headingDelta = self.calculateHeadingCorrection(targetHeading)
+
+            # remember speed
+            self.rememberSpeed((self.myMotorLeft.speed() + self.myMotorRight.speed()) / 2)
+            self.calculateAverageRememberedSpeed()
+
             
-            if not self.isEventSlowSpeedBreakingReached and not self.isEventStoppingReached:
+            if not self.isEventSlowSpeedBreakingReached and not self.isEventStoppingReached and not self.eventBreakingPointReached:
                 # we are in normal speed area, so we can correct use speed as basis
                 self.myMotorLeft.run(speed + correction)
                 self.myMotorRight.run(speed - correction)
@@ -237,7 +245,7 @@ class myDriveBase(DriveBase):
 
             # process breaking into slow speed area (only check if slowDistance is set)
             if slowDistance is not None and slowSpeed is not None and isSlowSpeedBreaking == False:
-                if self.checkDistance(slowDistance, slowDistanceBreakAcc):
+                if self.checkBreakingPoint(slowDistance, slowDistanceBreakAcc):
                     self.myMotorLeft.control.limits(acceleration=slowDistanceBreakAcc)
                     self.myMotorRight.control.limits(acceleration=slowDistanceBreakAcc)
                     self.myMotorLeft.run(slowSpeed)
@@ -246,32 +254,41 @@ class myDriveBase(DriveBase):
                     self.EventSlowSpeedBreakingReached = True
                     log.debug(f"driveStraightToTarget: slow speed breaking at {self.distance()} with speed {slowSpeed} breakAcc {slowDistanceBreakAcc}")
                     
-            # only check distance we have a distance limit
+            # only check distance if we have a distance limit
             if distance != 0:
-                if self.checkDistance(distance, acc, speed):
+                if self.checkBreakingPoint(distance, acc) and not self.eventBreakingPointReached:
                     # if stop is None, just end this function and keep current speed
                     if stop is not None:
-                        # hard stop, stop as fast as possible
-                        self.myMotorLeft.stop()
-                        self.myMotorRight.stop()
-                        self.stopEventReached = True    # remember that we have a stop event here
-                    self.eventDistanceReached = True
+                        self.myMotorLeft.run(0)
+                        self.myMotorRight.run(0)
+                        log.debug(f"driveStraightToTarget: breaking point reached at {self.distance()} with speed {self.currentAvgSpeed} acc {acc}, stop(0) called")
+                        # self.stopEventReached = True    # remember that we have a stop event here
+                    self.eventBreakingPointReached = True
 
-            log.debug(
+            # immediately stop if distance is reached
+            currentDistanceDriven = self.distance()
+            beforeStopMultiplier = 0.05
+            if currentDistanceDriven + self.currentAvgSpeed * beforeStopMultiplier >= distance and distance != 0:
+                log.info(f"driveStraightToTarget: distance reached {currentDistanceDriven} + {self.currentAvgSpeed * beforeStopMultiplier} >= {distance}")
+                self.isEventDistanceReached = True
+                if stop is not None:
+                    self.myMotorLeft.stop()
+                    self.myMotorRight.stop()
+                    self.stopEventReached = True
+
+            log.info(
                 f"driveStraightToTarget: headingDelta: {headingDelta} " +
                 f"correction {correction} speedL {self.myMotorLeft.speed()} " +
-                f"speedR {self.myMotorRight.speed()} dist {self.distance()} " +
-                f"done {self.done()}" )
+                f"speedR {self.myMotorRight.speed()} " +
+                f"speedAvg {self.currentAvgSpeed}  dist {self.distance()} "
+            )
+                
         
         # wait for full stop, as long stop is not set to None
         # if stop is set to None, just end the function
         if stop is not None:
             while not self.isStopped():
-                wait(10) # wait until motors are really stopped
-            
-
-
-
+                wait(10) # wait until motors are really stopped            
 
 class MotorAsServo:
     """Eine Klasse für einen Motor als Servo mit Positionsgrenzen."""
@@ -412,27 +429,30 @@ class Constants:
 #     driveBase.settings(speed_straight, acc_straight, speed_turn, acc_turn)
 #     driveBase.straight(distance, stop, wait)
 
+# initialize logging
+log.loglevel=log.LOGLEVEL_INFO
+
+# initialize hub
 hub = InventorHub(top_side=Axis.Z, front_side=Axis.Y)
 
-motorArm = MotorAsServo(Port.F, Direction.COUNTERCLOCKWISE, -40, 215,name="MA")
+# initialize motors 
+# motorArm = MotorAsServo(Port.F, Direction.COUNTERCLOCKWISE, -40, 215,name="MA")
 motorColor = MotorAsServo(Port.C, Direction.CLOCKWISE, -150, 100,name="MC")
-
 
 motorLeft = Motor(Port.A, reset_angle=None, )
 motorRight = Motor(Port.B, Direction.COUNTERCLOCKWISE, reset_angle=None)
 
-speed_straight = int(400)
-acc_straight  = int(200)
-speed_turn    = int(150)
-acc_turn      = int(100)
+# # setting speed default values
+# speed_straight = int(300)
+# acc_straight  = int(100)
+# speed_turn    = int(100)
+# acc_turn      = int(50)
 
 # driveBase = DriveBase(motorRight, motorLeft,56.009, 130.0 )
 driveBase = myDriveBase(motorRight, motorLeft, 56.009, 130.0, 300, 100, 100, 50 )
 
 
 
-# set debug
-log.loglevel=0
 
 
 sensorDistance = UltrasonicSensor(Port.D)
@@ -441,11 +461,12 @@ sensorColor = ColorSensor(Port.E)
 
 
 def setup():
+    log.info("setup: starting application")
+
     hub.light.on(Color.GREEN)
     sensorDistance.lights.off()
-    print ("starting application")
-    # motorArm.reset_angle()
     
+    # motorArm.reset_angle()
 
 def logAll():
     log.debug(f"{stopWatch.time():07d} US={sensorDistance.distance():04d} col={sensorColor.color()} L{motorLeft.angle():03d} R{motorRight.angle():03d} C{motorColor.motor.angle():03d} A{motorArm.motor.angle():03d}")
@@ -473,10 +494,10 @@ def main():
     wait (500)
     # motorLeft.run(-500)
     # motorRight.run(-500)
-    driveBase.driveStraightToTarget(500,0,900,3000)
+    driveBase.driveStraightToTarget(distance=1500,targetHeading=0,speed=900,acc=1000)
     
     wait(2000)
-    log.debug(f"{driveBase.done()} {driveBase.distance()}")
+    log.info(f"{driveBase.done()} {driveBase.distance()}")
     # 
     # for i in range (30):
     #     log.debug(motorLeft.speed())
